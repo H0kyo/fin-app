@@ -7,7 +7,7 @@ from pyspark.sql import functions as F
 @dp.expect_or_drop("valid_date", "date IS NOT NULL")
 def manual_transactions():
     return (
-        spark.readStream.table("bronze.manual_raw")
+        spark.readStream.table("bronze.manual_raw")  # noqa: F821
         .select(
             F.regexp_extract("entry_id", r"(\d+)$", 1).cast("int").alias("transaction_id"),
             F.col("user_id").alias("user_id"),
