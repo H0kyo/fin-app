@@ -1,0 +1,48 @@
+resources:
+  jobs:
+    sample_job:
+      name: create_medallion_and_run_pipeline
+
+      email_notifications:
+       on_failure:
+         - squ14sss@gmail.com
+
+      parameters:
+        - name: catalog
+          default: ${var.catalog}
+        - name: schema
+          default: ${var.schema}
+
+      tasks:
+        - task_key: notebook_task
+          notebook_task:
+            notebook_path: ../src/scripts/create_medallion.ipynb
+          libraries:
+            # By default we just include the .whl file generated for the finapp package.
+            # See https://docs.databricks.com/dev-tools/bundles/library-dependencies.html
+            # for more information on how to add other libraries.
+            - whl: ../dist/*.whl
+        - task_key: python_wheel_task
+          depends_on:
+            - task_key: notebook_task
+          python_wheel_task:
+            package_name: finapp
+            entry_point: main
+            parameters:
+              - "--catalog"
+              - "${var.catalog}"
+              - "--schema"
+              - "${var.schema}"
+          environment_key: finapp_env
+        - task_key: refresh_pipeline
+          depends_on:
+            - task_key: notebook_task
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.finapp_etl.id}
+
+      environments:
+        - environment_key: finapp_env
+          spec:
+            environment_version: "2"
+            dependencies:
+              - ../dist/*.whl
