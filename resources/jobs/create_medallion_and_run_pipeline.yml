@@ -16,12 +16,7 @@ resources:
       tasks:
         - task_key: notebook_task
           notebook_task:
-            notebook_path: ../src/scripts/create_medallion.ipynb
-          libraries:
-            # By default we just include the .whl file generated for the finapp package.
-            # See https://docs.databricks.com/dev-tools/bundles/library-dependencies.html
-            # for more information on how to add other libraries.
-            - whl: ../dist/*.whl
+            notebook_path: ../../src/scripts/create_medallion.ipynb
         - task_key: python_wheel_task
           depends_on:
             - task_key: notebook_task
@@ -45,4 +40,4 @@ resources:
           spec:
             environment_version: "2"
             dependencies:
-              - ../dist/*.whl
+              - ../../dist/*.whl

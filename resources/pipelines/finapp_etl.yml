@@ -6,12 +6,12 @@ resources:
       name: finapp_etl
       catalog: ${var.catalog}
       schema: ${var.schema}
-      root_path: "../src/finapp_etl"
+      root_path: "../../src/finapp_etl"
       serverless: true
 
       libraries:
         - glob:
-            include: ../src/finapp_etl/transformations/**
+            include: ../../src/finapp_etl/transformations/**
 
       environment:
         dependencies:
