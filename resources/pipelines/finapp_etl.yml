@@ -5,7 +5,6 @@ resources:
     finapp_etl:
       name: finapp_etl
       catalog: ${var.catalog}
-      schema: ${var.schema}
       root_path: "../../src/finapp_etl"
       serverless: true
 
