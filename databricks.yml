@@ -17,6 +17,8 @@ artifacts:
 variables:
   catalog:
     description: The catalog to use
+  schema:
+    description: The schema to use
 
 targets:
   dev:
@@ -30,6 +32,7 @@ targets:
       host: https://adb-7405617288273171.11.azuredatabricks.net
     variables:
       catalog: dev
+      schema: default
     presets:
       artifacts_dynamic_version: true
   prod:
@@ -40,6 +43,7 @@ targets:
       root_path: /Workspace/Users/ohryc@softserveinc.com/.bundle/${bundle.name}/${bundle.target}
     variables:
       catalog: fin_app_7405617288273171
+      schema: prod
     permissions:
       - user_name: ohryc@softserveinc.com
         level: CAN_MANAGE
