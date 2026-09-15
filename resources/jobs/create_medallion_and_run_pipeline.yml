@@ -17,27 +17,27 @@ resources:
         - task_key: notebook_task
           notebook_task:
             notebook_path: ../../src/scripts/create_medallion.ipynb
-        - task_key: python_wheel_task
-          depends_on:
-            - task_key: notebook_task
-          python_wheel_task:
-            package_name: finapp
-            entry_point: main
-            parameters:
-              - "--catalog"
-              - "${var.catalog}"
-              - "--schema"
-              - "${var.schema}"
-          environment_key: finapp_env
+        # - task_key: python_wheel_task
+        #   depends_on:
+        #     - task_key: notebook_task
+        #   python_wheel_task:
+        #     package_name: finapp
+        #     entry_point: main
+        #     parameters:
+        #       - "--catalog"
+        #       - "${var.catalog}"
+        #       - "--schema"
+        #       - "${var.schema}"
+        #   environment_key: finapp_env
         - task_key: refresh_pipeline
           depends_on:
             - task_key: notebook_task
           pipeline_task:
             pipeline_id: ${resources.pipelines.finapp_etl.id}
 
-      environments:
-        - environment_key: finapp_env
-          spec:
-            environment_version: "2"
-            dependencies:
-              - ../../dist/*.whl
+      # environments:
+      #   - environment_key: finapp_env
+      #     spec:
+      #       environment_version: "2"
+      #       dependencies:
+      #         - ../../dist/*.whl
