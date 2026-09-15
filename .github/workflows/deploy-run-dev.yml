@@ -1,0 +1,35 @@
+name: Deploy and run finapp job (dev)
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: finapp-dev-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy-and-run:
+    runs-on: ubuntu-latest
+    env:
+      DATABRICKS_HOST: https://adb-7405617288273171.11.azuredatabricks.net
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_PAT }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.12"
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Deploy bundle (dev)
+        run: databricks bundle deploy --target dev
+
+      - name: Run job (dev)
+        run: databricks bundle run sample_job --target dev

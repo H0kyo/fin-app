@@ -2,12 +2,12 @@ from pyspark import pipelines as dp
 from pyspark.sql import functions as F
 
 
-@dp.table(name="manual_transactions", comment="Unified Silver transactions from manual bronze")
+@dp.table(name="manual_transactions", comment="Unified Silver transactions from manual bronze", schema="silver")
 @dp.expect_or_drop("valid_amount", "amount IS NOT NULL")
 @dp.expect_or_drop("valid_date", "date IS NOT NULL")
 def manual_transactions():
     return (
-        spark.read.table("bronze.manual_raw")
+        spark.readStream.table("bronze.manual_raw")
         .select(
             F.regexp_extract("entry_id", r"(\d+)$", 1).cast("int").alias("transaction_id"),
             F.col("user_id").alias("user_id"),
