@@ -2,7 +2,7 @@ from pyspark import pipelines as dp
 from pyspark.sql import functions as F
 
 
-@dp.table(name="manual_transactions", comment="Unified Silver transactions from manual bronze", schema="silver")
+@dp.table(name="silver.manual_transactions", comment="Unified Silver transactions from manual bronze")
 @dp.expect_or_drop("valid_amount", "amount IS NOT NULL")
 @dp.expect_or_drop("valid_date", "date IS NOT NULL")
 def manual_transactions():
