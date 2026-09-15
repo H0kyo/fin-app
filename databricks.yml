@@ -30,8 +30,8 @@ targets:
     workspace:
       host: https://adb-7405617288273171.11.azuredatabricks.net
     variables:
-      catalog: fin_app_7405617288273171
-      schema: dev
+      catalog: dev
+      schema: default
     presets:
       artifacts_dynamic_version: true
   prod:
