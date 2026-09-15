@@ -26,33 +26,33 @@ resources:
           notebook_task:
             notebook_path: ../src/scripts/create_medallion.ipynb
           job_cluster_key: job_cluster
-          libraries:
-            # By default we just include the .whl file generated for the finapp package.
-            # See https://docs.databricks.com/dev-tools/bundles/library-dependencies.html
-            # for more information on how to add other libraries.
-            - whl: ../dist/*.whl
-        - task_key: python_wheel_task
-          depends_on:
-            - task_key: notebook_task
-          python_wheel_task:
-            package_name: finapp
-            entry_point: main
-            parameters:
-              - "--catalog"
-              - "${var.catalog}"
-              - "--schema"
-              - "${var.schema}"
-          job_cluster_key: job_cluster
-          libraries:
-            # By default we just include the .whl file generated for the finapp package.
-            # See https://docs.databricks.com/dev-tools/bundles/library-dependencies.html
-            # for more information on how to add other libraries.
-            - whl: ../dist/*.whl
-        - task_key: refresh_pipeline
-          depends_on:
-            - task_key: notebook_task
-          pipeline_task:
-            pipeline_id: ${resources.pipelines.finapp_etl.id}
+          # libraries:
+          #   # By default we just include the .whl file generated for the finapp package.
+          #   # See https://docs.databricks.com/dev-tools/bundles/library-dependencies.html
+          #   # for more information on how to add other libraries.
+          #   - whl: ../dist/*.whl
+        # - task_key: python_wheel_task
+        #   depends_on:
+        #     - task_key: notebook_task
+        #   python_wheel_task:
+        #     package_name: finapp
+        #     entry_point: main
+        #     parameters:
+        #       - "--catalog"
+        #       - "${var.catalog}"
+        #       - "--schema"
+        #       - "${var.schema}"
+        #   job_cluster_key: job_cluster
+        #   libraries:
+        #     # By default we just include the .whl file generated for the finapp package.
+        #     # See https://docs.databricks.com/dev-tools/bundles/library-dependencies.html
+        #     # for more information on how to add other libraries.
+        #     - whl: ../dist/*.whl
+        # - task_key: refresh_pipeline
+        #   depends_on:
+        #     - task_key: notebook_task
+        #   pipeline_task:
+        #     pipeline_id: ${resources.pipelines.finapp_etl.id}
 
       job_clusters:
         - job_cluster_key: job_cluster
