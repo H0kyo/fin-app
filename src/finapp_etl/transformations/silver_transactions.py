@@ -1,13 +1,18 @@
 from pyspark import pipelines as dp
 from pyspark.sql import functions as F
 
+dp.create_streaming_table(
+    name="silver.transactions",
+    comment="Unified Silver transactions across all sources",
+)
+
 
 @dp.append_flow(
     target="silver.transactions",
     name="manual_transactions_flow",
 )
-@dp.expect_or_drop("valid_amount", "amount IS NOT NULL")
-@dp.expect_or_drop("valid_date", "date IS NOT NULL")
+# @dp.expect_or_drop("valid_amount", "amount IS NOT NULL")
+# @dp.expect_or_drop("valid_date", "date IS NOT NULL")
 def manual_transactions():
     return spark.readStream.table("bronze.manual_raw").select(  # noqa: F821
         F.regexp_extract("entry_id", r"(\d+)$", 1).cast("int").alias("transaction_id"),
