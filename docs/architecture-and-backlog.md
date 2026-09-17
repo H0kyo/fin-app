@@ -2,7 +2,7 @@
 
 > Цей файл — головний довідник проєкту. Тут накопичується все, що обговорюється в "основному" чаті (ідеї, архітектурні рішення, беклог). Окремі модулі/аспекти розбираються в інших чатах, повʼязаних з fin-app, — при потребі підвантажуй цей файл як контекст.
 >
-> Останнє оновлення: 2026-09-12.
+> Останнє оновлення: 2026-09-17.
 
 ## 1. Ідея проєкту
 
@@ -21,7 +21,7 @@
 - `resources/finapp_etl.pipeline.yml` — DLT-пайплайн `finapp_etl`, читає трансформації з `src/finapp_etl/transformations`.
 - `resources/sample_job.job.yml` — `sample_job` (notebook → wheel task `main` → refresh pipeline), кластер `16.4.x-scala2.12` / `Standard_D3_v2`.
 - `src/finapp/` — пакет з `main.py` (entry point) і `taxis.py` (sample: читає `samples.nyctaxi.trips`).
-- `src/finapp_etl/transformations/` — sample DLT-датасети (`sample_trips_finapp`, `sample_zones_finapp`) — це темплейтні заглушки, підлягають заміні на реальні фінансові трансформації.
+- `src/finapp_etl/transformations/` — sample DLT-датасети (`sample_trips_finapp`, `sample_zones_finapp`) залишились темплейтними заглушками; поруч уже є реальні фінансові трансформації: `united_transactions.py` (оголошує unified streaming table `silver.transactions` через `dp.create_streaming_table`) і `manual_transactions.py` (`@dp.append_flow(target="silver.transactions", ...)` з `bronze.manual_raw` — перше й наразі єдине джерело в unified-таблиці).
 - `tests/` — pytest + Databricks Connect фікстури.
 - Одна незакомічена зміна в `databricks.yml` (dev: catalog/schema `fin_app_7405617288273171`/`dev` → `dev`/`default`) — ще не в git.
 
@@ -48,6 +48,22 @@
 - **Silver** — єдина схема транзакцій: `silver.transactions` (transaction_id, account_id, user_id, date, amount, currency, direction income/expense, merchant_raw, source, category_id nullable, category_source: manual/rule/ml, confidence), `silver.accounts`, `silver.categories` (ієрархія група→підкатегорія), `silver.category_rules` (ключові слова/MCC → категорія).
 - **Gold** — агрегати під аналітику й фічі для ML: `gold.spend_by_category_month`, `gold.income_vs_expense_trend`, `gold.recurring_payments` (підписки), `gold.user_goals` (ціль: сума/категорія/період), feature-таблиці для моделей.
 - Мапиться на наявний `finapp_etl` DLT-пайплайн: нові `@dp.table` трансформації замість sample nyctaxi-датасетів.
+
+### 3.3.1 Конвенції для Bronze→Silver трансформацій (DLT)
+
+Прийнято під час імплементації `manual_transactions` (`src/finapp_etl/transformations/manual_transactions.py`), застосовувати для решти джерел (`mono`, `privat`) аналогічно:
+
+- **Streaming tables, не materialized views.** Джерело читається через `spark.readStream.table("bronze.<source>_raw")` (не `spark.read.table`), щоб трансформація обробляла лише нові рядки інкрементально, а не перераховувала все на кожен refresh. Причина: bronze-джерела (особливо ручне введення) — append-only потік нових записів.
+  - Наслідок: якщо колись знадобиться backfill/виправлення заднім числом у bronze-таблиці (не append), streaming read впаде на non-additive change — тоді свідомо додавати `.option("skipChangeCommits", "true")` (з розумінням, що виправлення "заднім числом" будуть пропущені) або переглядати підхід.
+- **Quality rules через `@dp.expect_or_drop`**, декоратор одразу під `@dp.table(...)`, по одному на правило (або `@dp.expect_all_or_drop({...})` одним блоком). Мінімальний набір для transactions-подібних таблиць: `valid_amount` (`amount IS NOT NULL`), `valid_date` (`date IS NOT NULL`). `expect_or_drop` дропає рядок, `expect` лише логує, `expect_or_fail` валить весь пайплайн — обирати за критичністю поля.
+- **`transaction_id`**: витягувати числову частину з source-специфічного `entry_id` (формати різняться: `privat-tx-0001`, `manual-0001`) через `F.regexp_extract("entry_id", r"(\d+)$", 1).cast("int")`, а не фіксований `substring(..., -N)` — довжина префікса/номера не гарантовано стала. Обов'язково зберігати поруч `source` (`F.lit("<source>").alias("source")`), бо номер сам по собі не унікальний між джерелами (`privat-tx-0001` і `manual-0001` дають однакове число).
+- **Ручні записи — golden labels категоризації** (див. §3.4): для `manual_transactions` одразу проставляється `category_source = lit("manual")`, а не залишається на пізніший rule-based/ML крок.
+- **`silver.transactions` — єдина ціль для всіх джерел, реалізовано.** `united_transactions.py` містить лише `dp.create_streaming_table(name="silver.transactions", ...)` (декларація без запиту — щоб не дублювати оголошення таблиці при додаванні кожного нового джерела). Кожне джерело — окремий файл з `@dp.append_flow(target="silver.transactions", name="<source>_transactions_flow")` (а не власний `@dp.table` і не `UNION ALL` в одній batch-трансформації). `manual_transactions.py` вже переведено на цей паттерн; `mono`/`privat` додаються аналогічно. Схеми всіх flows, що пишуть в одну streaming table, мають повністю збігатись за назвами й типами колонок.
+- **Спосіб оплати з `note`** (для manual) у сирому bronze лишається, але похідні `is_card`/`is_cash` (і сам `note`) **не переносяться** в unified `silver.transactions` — це manual-специфічні поля, яких не буде в mono/privat. Якщо колись знадобиться аналітика по способу оплати — читати напряму з `bronze.manual_raw.note`.
+- **`account_id` для manual = `NULL`.** Ручний запис не привʼязаний до конкретного рахунку. Свідомо не використовується ні `user_id` (інша сутність — "хто", не "який рахунок"), ні синтетичний `account_id` типу `"manual-" || user_id` — останнє відкладено до появи `silver.accounts`, щоб не вигадувати конвенцію під таблицю, якої ще немає.
+- **`category_id` для manual = сирий `category_hint`.** Тимчасово, доки немає довідника `silver.categories` — значення в `category_id` не є FK, а прямий текст, який ввів користувач. Замінити на нормалізований FK, коли з'явиться довідник.
+- **`confidence` для manual = `NULL`.** Поле відображає впевненість rule-based/ML-класифікатора (§3.4); коли категорію задав сам користувач, поняття не застосовується.
+- **`source` — завжди літерал у коді flow-функції, не читається з bronze `_source`.** Кожен файл трансформації обробляє рівно одне джерело, тож значення `source` — константа для цього flow (`F.lit("manual")` тощо), а не runtime-залежне значення з ingestion-метаданих bronze (`_source` там не гарантовано `NOT NULL`/консистентне, і не має ламати композитний ключ `(source, transaction_id)`).
 
 ### 3.4 Категоризація
 
@@ -116,3 +132,4 @@ Governance: фінансові персональні дані → краще Da
 - Структура файлів Databricks App (`app.py`, `app.yaml`, `resources/finapp_app.app.yml`) — розписати перед створенням.
 - Чи потрібен окремий `user_id`/мультикористувацький режим з самого початку, чи це single-user проєкт на старті.
 - Остаточне рішення по Privat24 (підключати одразу чи залишити на потім через нестабільність API).
+- `resources/finapp_etl.pipeline.yml` задає єдину пару `catalog`/`schema` на весь пайплайн (`dev.default` / `fin_app_..._.prod`) — немає окремих `bronze`/`silver`/`gold` схем, хоча §3.3 їх передбачає. Треба обрати: (a) хардкодити `schema="bronze"/"silver"/"gold"` в кожному `@dp.table(...)`, чи (b) додати `bronze_schema`/`silver_schema`/`gold_schema` bundle-змінні в `databricks.yml` для гнучкості per-таргет. Поки що не вирішено.
