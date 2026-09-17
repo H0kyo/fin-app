@@ -5,7 +5,6 @@ from pyspark.sql import functions as F
 @dp.append_flow(
     target="silver.transactions",
     name="manual_transactions_flow",
-    comment="Unified Silver transactions from manual bronze",
 )
 @dp.expect_or_drop("valid_amount", "amount IS NOT NULL")
 @dp.expect_or_drop("valid_date", "date IS NOT NULL")
