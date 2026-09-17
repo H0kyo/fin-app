@@ -7,7 +7,13 @@ resources:
       catalog: ${var.catalog}
       schema: ${var.schema}
       root_path: "../../src/finapp_etl"
-      serverless: true
+      clusters:
+        - label: default
+          num_workers: 2           
+          node_type_id: Standard_D4s_v3   
+          driver_node_type_id: Standard_D4s_v3
+          spark_conf:
+            spark.databricks.photon.enabled: "false"
 
       libraries:
         - glob:
