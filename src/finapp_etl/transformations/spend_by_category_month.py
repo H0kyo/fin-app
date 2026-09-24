@@ -6,7 +6,7 @@ from pyspark.sql import functions as F
 def spend_by_category_month():
     return (
         spark.read.table("silver.transactions")  # noqa: F821
-        .filter(F.col("direction") == "expence")
+        .filter(F.col("direction") == "expense")
         .groupBy(
             "user_id",
             "category_id",

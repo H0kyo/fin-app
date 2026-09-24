@@ -19,6 +19,8 @@ variables:
     description: The catalog to use
   schema:
     description: The schema to use
+  mono_webhook_landing_path:
+    description: Path for mono api data
 
 targets:
   dev:
@@ -33,6 +35,7 @@ targets:
     variables:
       catalog: dev
       schema: default
+      mono_webhook_landing_path: abfss://dev@ohrycfinapp.dfs.core.windows.net/bronze-landing/mono_webhook
     presets:
       artifacts_dynamic_version: true
   prod:
@@ -44,6 +47,7 @@ targets:
     variables:
       catalog: fin_app_7405617288273171
       schema: prod
+      mono_webhook_landing_path: abfss://dev@ohrycfinapp.dfs.core.windows.net/bronze-landing/mono_webhook
     permissions:
       - user_name: ohryc@softserveinc.com
         level: CAN_MANAGE

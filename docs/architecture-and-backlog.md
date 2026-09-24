@@ -2,7 +2,7 @@
 
 > Цей файл — головний довідник проєкту. Тут накопичується все, що обговорюється в "основному" чаті (ідеї, архітектурні рішення, беклог). Окремі модулі/аспекти розбираються в інших чатах, повʼязаних з fin-app, — при потребі підвантажуй цей файл як контекст.
 >
-> Останнє оновлення: 2026-09-17.
+> Останнє оновлення: 2026-09-24.
 
 ## 1. Ідея проєкту
 
@@ -45,7 +45,7 @@
 ### 3.3 Модель даних (medallion + Unity Catalog)
 
 - **Bronze** — сирі дані per джерело: `bronze.mono_raw`, `bronze.privat_raw`, `bronze.manual_raw`. Без трансформацій, для трасованості.
-- **Silver** — єдина схема транзакцій: `silver.transactions` (transaction_id, account_id, user_id, date, amount, currency, direction income/expense, merchant_raw, source, category_id nullable, category_source: manual/rule/ml, confidence), `silver.accounts`, `silver.categories` (ієрархія група→підкатегорія), `silver.category_rules` (ключові слова/MCC → категорія).
+- **Silver** — єдина схема транзакцій: `silver.transactions` (transaction_id STRING — див. §3.3.1, account_id, user_id, date, amount, currency, direction income/expense, merchant_raw, source, category_id nullable, category_source: manual/rule/ml, confidence), `silver.accounts`, `silver.categories` (ієрархія група→підкатегорія), `silver.category_rules` (ключові слова/MCC → категорія).
 - **Gold** — агрегати під аналітику й фічі для ML: `gold.spend_by_category_month`, `gold.income_vs_expense_trend`, `gold.recurring_payments` (підписки), `gold.user_goals` (ціль: сума/категорія/період), feature-таблиці для моделей.
 - Мапиться на наявний `finapp_etl` DLT-пайплайн: нові `@dp.table` трансформації замість sample nyctaxi-датасетів.
 
@@ -56,7 +56,19 @@
 - **Streaming tables, не materialized views.** Джерело читається через `spark.readStream.table("bronze.<source>_raw")` (не `spark.read.table`), щоб трансформація обробляла лише нові рядки інкрементально, а не перераховувала все на кожен refresh. Причина: bronze-джерела (особливо ручне введення) — append-only потік нових записів.
   - Наслідок: якщо колись знадобиться backfill/виправлення заднім числом у bronze-таблиці (не append), streaming read впаде на non-additive change — тоді свідомо додавати `.option("skipChangeCommits", "true")` (з розумінням, що виправлення "заднім числом" будуть пропущені) або переглядати підхід.
 - **Quality rules через `@dp.expect_or_drop`**, декоратор одразу під `@dp.table(...)`, по одному на правило (або `@dp.expect_all_or_drop({...})` одним блоком). Мінімальний набір для transactions-подібних таблиць: `valid_amount` (`amount IS NOT NULL`), `valid_date` (`date IS NOT NULL`). `expect_or_drop` дропає рядок, `expect` лише логує, `expect_or_fail` валить весь пайплайн — обирати за критичністю поля.
-- **`transaction_id`**: витягувати числову частину з source-специфічного `entry_id` (формати різняться: `privat-tx-0001`, `manual-0001`) через `F.regexp_extract("entry_id", r"(\d+)$", 1).cast("int")`, а не фіксований `substring(..., -N)` — довжина префікса/номера не гарантовано стала. Обов'язково зберігати поруч `source` (`F.lit("<source>").alias("source")`), бо номер сам по собі не унікальний між джерелами (`privat-tx-0001` і `manual-0001` дають однакове число).
+- **`transaction_id` — `STRING`, береться напряму з рідного ID джерела, без regex-парсингу чисел.**
+  Раніше діяла конвенція "витягнути числову частину з `entry_id` через regexp і кастити в int" — вона
+  працювала лише випадково, бо синтетичні dev-seed ID (`manual-0001`, `privat-tx-0001`) самі мали цифровий
+  суфікс. Реальні ID банківських API (напр. Monobank statementItem.id, типу `ZuHWzqE7cbrY`) — довільні
+  алфанумеричні рядки без гарантованого формату. Тому `transaction_id` у `silver.transactions` — `STRING`,
+  кожне джерело просто передає своє власне ID як є (`F.col("entry_id")` для manual, `F.col("transaction_id")`
+  для mono тощо), без спроб парсингу чи кастингу в число. Композитний ключ `(source, transaction_id)`
+  лишається унікальним — `source` розрізняє джерела навіть при теоретичному збігу рядків.
+  - **Наслідок:** `manual_transactions.py` (уже реалізований з regexp+cast int) потребує міграції —
+    прибрати `F.regexp_extract(...).cast("int")`, залишити `F.col("entry_id").alias("transaction_id")`.
+  - **Наслідок:** зміна типу колонки `silver.transactions.transaction_id` (INT→STRING) вимагає full
+    refresh пайплайна `finapp_etl` (несумісна in-place зміна для Delta streaming table). Дешево зробити
+    зараз (немає реальних прод-даних), дорожче — якщо відкласти.
 - **Ручні записи — golden labels категоризації** (див. §3.4): для `manual_transactions` одразу проставляється `category_source = lit("manual")`, а не залишається на пізніший rule-based/ML крок.
 - **`silver.transactions` — єдина ціль для всіх джерел, реалізовано.** `united_transactions.py` містить лише `dp.create_streaming_table(name="silver.transactions", ...)` (декларація без запиту — щоб не дублювати оголошення таблиці при додаванні кожного нового джерела). Кожне джерело — окремий файл з `@dp.append_flow(target="silver.transactions", name="<source>_transactions_flow")` (а не власний `@dp.table` і не `UNION ALL` в одній batch-трансформації). `manual_transactions.py` вже переведено на цей паттерн; `mono`/`privat` додаються аналогічно. Схеми всіх flows, що пишуть в одну streaming table, мають повністю збігатись за назвами й типами колонок.
 - **Спосіб оплати з `note`** (для manual) у сирому bronze лишається, але похідні `is_card`/`is_cash` (і сам `note`) **не переносяться** в unified `silver.transactions` — це manual-специфічні поля, яких не буде в mono/privat. Якщо колись знадобиться аналітика по способу оплати — читати напряму з `bronze.manual_raw.note`.
@@ -135,3 +147,4 @@ Governance: фінансові персональні дані → краще Da
 - Чи потрібен окремий `user_id`/мультикористувацький режим з самого початку, чи це single-user проєкт на старті.
 - Остаточне рішення по Privat24 (підключати одразу чи залишити на потім через нестабільність API).
 - `resources/finapp_etl.pipeline.yml` задає єдину пару `catalog`/`schema` на весь пайплайн (`dev.default` / `fin_app_..._.prod`) — немає окремих `bronze`/`silver`/`gold` схем, хоча §3.3 їх передбачає. Треба обрати: (a) хардкодити `schema="bronze"/"silver"/"gold"` в кожному `@dp.table(...)`, чи (b) додати `bronze_schema`/`silver_schema`/`gold_schema` bundle-змінні в `databricks.yml` для гнучкості per-таргет. Поки що не вирішено.
+- Міграція `manual_transactions.py` на `transaction_id: STRING` (див. §3.3.1) — рішення прийняте, імплементація ще не зроблена; потребує full refresh `silver.transactions`.
