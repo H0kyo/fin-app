@@ -1,0 +1,43 @@
+resources:
+  jobs:
+    mono_backfill:
+      name: mono_backfill
+
+      parameters:
+        - name: months
+          default: "24"
+        - name: accounts
+          default: ""
+        - name: include_jars
+          default: "false"
+
+      tasks:
+        - task_key: backfill
+          spark_python_task:
+            python_file: ../../src/scripts/mono_backfill.py
+            parameters:
+              - --src-path
+              - ${workspace.file_path}/src
+              - --catalog
+              - ${var.catalog}
+              - --landing-path
+              - ${var.mono_webhook_landing_path}
+              - --months
+              - "{{job.parameters.months}}"
+              - --accounts
+              - "{{job.parameters.accounts}}"
+              - --include-jars
+              - "{{job.parameters.include_jars}}"
+          environment_key: finapp_env
+          timeout_seconds: 21600
+
+        - task_key: refresh_pipeline
+          depends_on:
+            - task_key: backfill
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.finapp_etl.id}
+
+      environments:
+        - environment_key: finapp_env
+          spec:
+            environment_version: "4"

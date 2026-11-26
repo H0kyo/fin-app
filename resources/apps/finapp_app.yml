@@ -1,0 +1,6 @@
+resources:
+  apps:
+    finapp_app:
+      name: finapp-${bundle.target}
+      description: Категоризація транзакцій, прогноз витрат і виявлення аномалій (FinApp)
+      source_code_path: ../../src
